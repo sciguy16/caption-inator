@@ -37,6 +37,8 @@ impl FromStr for Line {
 struct Args {
     #[clap(long, help = "Replay a text file over the websocket")]
     replay: Option<PathBuf>,
+    #[clap(long, help = "Directory to serve frontend assets out of")]
+    frontend: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -56,7 +58,7 @@ async fn main() -> Result<()> {
         listener::start(tx.clone());
     }
 
-    server::run(tx).await?;
+    server::run(tx, args.frontend).await?;
 
     Ok(())
 }

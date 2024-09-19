@@ -8,8 +8,9 @@ use axum::{
     routing::get,
     Router,
 };
-use std::time::Duration;
+use std::{path::PathBuf, time::Duration};
 use tokio::sync::broadcast;
+use tower_http::services::ServeDir;
 
 const LISTEN_ADDRESS: &str = "[::1]:3000";
 const PING_INTERVAL: Duration = Duration::from_secs(5);
@@ -19,11 +20,19 @@ struct AppState {
     tx: broadcast::Sender<Line>,
 }
 
-pub async fn run(tx: broadcast::Sender<Line>) -> Result<()> {
-    let app = Router::new()
+pub async fn run(
+    tx: broadcast::Sender<Line>,
+    frontend: Option<PathBuf>,
+) -> Result<()> {
+    let mut app = Router::new()
         .route("/api/", get(|| async { "Hello, World!" }))
         .route("/api/subscribe", get(ws_subscribe))
         .with_state(AppState { tx });
+
+    if let Some(frontend) = frontend {
+        let serve_dir = ServeDir::new(frontend);
+        app = app.fallback_service(serve_dir);
+    }
 
     info!("Server listening on http://{LISTEN_ADDRESS}");
     let listener = tokio::net::TcpListener::bind(LISTEN_ADDRESS).await?;

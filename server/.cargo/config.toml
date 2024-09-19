@@ -1,2 +1,5 @@
 [build]
 target-dir = "../target/server"
+
+[target.armv7-unknown-linux-musleabihf]
+linker = "arm-linux-gnueabihf-gcc"
