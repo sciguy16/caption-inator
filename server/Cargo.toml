@@ -34,3 +34,4 @@ maintainer-scripts = "maintainer-scripts/"
 systemd-units = [
 	{ unit-name = "caption", enable = false, start = false },
 ]
+depends = ["libc6:armhf (>= 2.31)"]
