@@ -39,6 +39,10 @@ struct Args {
     replay: Option<PathBuf>,
     #[clap(long, help = "Directory to serve frontend assets out of")]
     frontend: Option<PathBuf>,
+    #[clap(long, help = "Azure speech services region")]
+    region: Option<String>,
+    #[clap(long, help = "Azure speech services key")]
+    key: Option<String>,
 }
 
 #[tokio::main]
@@ -55,7 +59,11 @@ async fn main() -> Result<()> {
         replay::run(tx.clone(), &file)?;
     } else {
         info!("Starting in listener mode");
-        listener::start(tx.clone());
+        let auth = match (args.region, args.key) {
+            (Some(region), Some(key)) => listener::Auth { region, key },
+            _ => Err(eyre!("Region and key are required for Azure listener"))?,
+        };
+        listener::start(tx.clone(), auth);
     }
 
     server::run(tx, args.frontend).await?;
