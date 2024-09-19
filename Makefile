@@ -7,9 +7,13 @@ pi: $(PI_DEB) server frontend
 
 $(PI_DEB): server frontend
 	cd frontend && trunk build --release
+	cd server && cross build \
+		--release \
+		--target armv7-unknown-linux-gnueabihf
 	cd server && cargo deb -v \
-		--target armv7-unknown-linux-musleabihf
-	cp target/server/armv7-unknown-linux-musleabihf/debian/server_0.1.0-1_armhf.deb \
+		--target armv7-unknown-linux-gnueabihf \
+		--no-build # binary was built by cross
+	cp target/server/armv7-unknown-linux-gnueabihf/debian/server_0.1.0-1_armhf.deb \
 		$(PI_DEB)
 
 deploy-pi: $(PI_DEB)
