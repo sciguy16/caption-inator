@@ -5,7 +5,7 @@ use axum::{
         State,
     },
     response::Response,
-    routing::get,
+    routing::{get, post},
     Router,
 };
 use std::{path::PathBuf, time::Duration};
@@ -27,6 +27,9 @@ pub async fn run(
     let mut app = Router::new()
         .route("/api/", get(|| async { "Hello, World!" }))
         .route("/api/subscribe", get(ws_subscribe))
+        .route("/api/azure/start", post(start))
+        .route("/api/azure/stop", post(stop))
+        .route("/api/azure/simulate", post(simulate))
         .with_state(AppState { tx });
 
     if let Some(frontend) = frontend {
@@ -76,3 +79,9 @@ async fn handle_websocket(
 
     Ok(())
 }
+
+async fn start() {}
+
+async fn stop() {}
+
+async fn simulate() {}
