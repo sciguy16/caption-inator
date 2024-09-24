@@ -5,6 +5,8 @@ use std::{collections::VecDeque, rc::Rc, time::Duration};
 use wasm_bindgen::UnwrapThrowExt;
 use yew::prelude::*;
 
+mod controls;
+
 const WEBSOCKET_URL: &str = "/api/subscribe";
 const CAPTION_BUFFER_LEN: usize = 5;
 
@@ -126,11 +128,16 @@ fn Captions() -> Html {
 
     html! {
         <>
+            <p>
+                <span class="state">
+                    { format!("State: {:?}", *connection_state) }
+                </span>
+                <controls::Controls />
+            </p>
             <div class="container">
                 { sentences }
                 { active }
             </div>
-            <p class="state">{ format!("State: {:?}", *connection_state) }</p>
         </>
     }
 }
