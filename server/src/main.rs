@@ -20,6 +20,13 @@ enum Line {
     Recognised(String),
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize)]
+enum RunState {
+    Stopped,
+    Running,
+    Test,
+}
+
 impl FromStr for Line {
     type Err = color_eyre::Report;
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {

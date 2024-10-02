@@ -1,4 +1,4 @@
-use crate::{Line, Result};
+use crate::{Line, Result, RunState};
 use color_eyre::eyre::eyre;
 use std::process::Stdio;
 use tokio::{
@@ -21,18 +21,45 @@ pub fn start(tx: broadcast::Sender<Line>, auth: Auth) {
     tokio::task::spawn(async move { start_inner(tx, auth).await.unwrap() });
 }
 
+// State machine:
+// - Stopped: wait for control channel message to transition to other state
+// - Running: start azure client and then select! on that and the control channel
+// - Test: start test loop and then select! on that and the control channel
 async fn start_inner(tx: broadcast::Sender<Line>, auth: Auth) -> Result<()> {
-    let auth = azure_speech::Auth::from_subscription(auth.region, auth.key);
+    let mut run_state = RunState::Stopped;
 
-    let config = azure_speech::recognizer::Config::default();
+    let azure_auth =
+        azure_speech::Auth::from_subscription(auth.region, auth.key);
 
-    let client = azure_speech::recognizer::Client::connect(auth, config)
-        .await
-        .map_err(|err| eyre!("{err:?}"))?;
+    loop {
+        run_state = match run_state {
+            RunState::Stopped => wait_for_transition().await,
+            RunState::Running => match do_run(&tx, &azure_auth).await {
+                Ok(state) => state,
+                Err(err) => {
+                    error!("{err}");
+                    RunState::Stopped
+                }
+            },
+            s => s,
+        };
+    }
+}
 
-    // Using this utility, I'm creating an audio stream from the default input device.
-    // The audio headers are sent first, then the audio data.
-    // As the audio is raw, the WAV format is used.
+async fn wait_for_transition() -> RunState {
+    RunState::Stopped
+}
+
+async fn do_run(
+    tx: &broadcast::Sender<Line>,
+    auth: &azure_speech::Auth,
+) -> Result<RunState> {
+    let azure_config = azure_speech::recognizer::Config::default();
+    let client =
+        azure_speech::recognizer::Client::connect(auth.clone(), azure_config)
+            .await
+            .map_err(|err| eyre!("{err:?}"))?;
+
     let stream = listen_from_default_input().await?;
 
     let mut events = client
@@ -46,26 +73,29 @@ async fn start_inner(tx: broadcast::Sender<Line>, auth: Auth) -> Result<()> {
 
     tracing::info!("... Starting to listen from microphone ...");
 
-    while let Some(event) = events.next().await {
-        dbg!(&event);
-        use azure_speech::recognizer::Event;
-        match event {
-            Ok(Event::Recognized(_, result, _, _, _)) => {
-                tx.send(Line::Recognised(result.text.clone()))?;
+    loop {
+        tokio::select! {
+            event = events.next() => {
+                let Some(event) = event else { break; };
+                dbg!(&event);
+                use azure_speech::recognizer::Event;
+                match event {
+                    Ok(Event::Recognized(_, result, _, _, _)) => {
+                        tx.send(Line::Recognised(result.text.clone()))?;
+                    }
+                    Ok(Event::Recognizing(_, result, _, _, _)) => {
+                        tx.send(Line::Recognising(result.text.clone()))?;
+                    }
+                    Err(err) => {
+                        error!("{err:?}");
+                    }
+                    _ => {}
+                }
             }
-            Ok(Event::Recognizing(_, result, _, _, _)) => {
-                tx.send(Line::Recognising(result.text.clone()))?;
-            }
-            Err(err) => {
-                error!("{err:?}");
-            }
-            _ => {}
         }
     }
 
-    tracing::info!("Completed!");
-
-    Ok(())
+    Ok(RunState::Stopped)
 }
 
 // ffmpeg -y -f pulse -ac 2 -i default -f webm /dev/stdout

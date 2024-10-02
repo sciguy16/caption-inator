@@ -1,4 +1,4 @@
-use crate::{Line, Result};
+use crate::{Line, Result, RunState};
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
@@ -8,7 +8,6 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use serde::Serialize;
 use std::{path::PathBuf, sync::Arc, time::Duration};
 use tokio::sync::{broadcast, Mutex};
 use tower_http::services::ServeDir;
@@ -16,13 +15,6 @@ use tracing::info;
 
 const LISTEN_ADDRESS: &str = "[::1]:3000";
 const PING_INTERVAL: Duration = Duration::from_secs(5);
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize)]
-enum RunState {
-    Stopped,
-    Running,
-    Test,
-}
 
 #[derive(Clone)]
 struct AppState {
