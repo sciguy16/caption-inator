@@ -1,4 +1,4 @@
-use crate::{Line, Result, RunState};
+use crate::{ControlMessage, Line, Result, RunState};
 use color_eyre::eyre::eyre;
 use std::process::Stdio;
 use tokio::{
@@ -17,15 +17,25 @@ pub struct Auth {
 
 // spx recognize --microphone --phrases @/tmp/words.txt --language en-GB
 
-pub fn start(tx: broadcast::Sender<Line>, auth: Auth) {
-    tokio::task::spawn(async move { start_inner(tx, auth).await.unwrap() });
+pub fn start(
+    tx: broadcast::Sender<Line>,
+    control_rx: mpsc::Receiver<ControlMessage>,
+    auth: Auth,
+) {
+    tokio::task::spawn(async move {
+        start_inner(tx, control_rx, auth).await.unwrap()
+    });
 }
 
 // State machine:
 // - Stopped: wait for control channel message to transition to other state
 // - Running: start azure client and then select! on that and the control channel
 // - Test: start test loop and then select! on that and the control channel
-async fn start_inner(tx: broadcast::Sender<Line>, auth: Auth) -> Result<()> {
+async fn start_inner(
+    tx: broadcast::Sender<Line>,
+    mut control_rx: mpsc::Receiver<ControlMessage>,
+    auth: Auth,
+) -> Result<()> {
     let mut run_state = RunState::Stopped;
 
     let azure_auth =
@@ -33,25 +43,37 @@ async fn start_inner(tx: broadcast::Sender<Line>, auth: Auth) -> Result<()> {
 
     loop {
         run_state = match run_state {
-            RunState::Stopped => wait_for_transition().await,
-            RunState::Running => match do_run(&tx, &azure_auth).await {
-                Ok(state) => state,
-                Err(err) => {
-                    error!("{err}");
-                    RunState::Stopped
+            RunState::Stopped => wait_for_transition(&mut control_rx).await,
+            RunState::Running => {
+                match do_run(&tx, &mut control_rx, &azure_auth).await {
+                    Ok(state) => state,
+                    Err(err) => {
+                        error!("{err}");
+                        RunState::Stopped
+                    }
                 }
-            },
+            }
             s => s,
         };
     }
 }
 
-async fn wait_for_transition() -> RunState {
-    RunState::Stopped
+async fn wait_for_transition(
+    control_rx: &mut mpsc::Receiver<ControlMessage>,
+) -> RunState {
+    loop {
+        match control_rx.recv().await.unwrap() {
+            ControlMessage::SetState(new_state) => break new_state,
+            ControlMessage::GetState(reply) => {
+                let _ = reply.send(RunState::Stopped);
+            }
+        }
+    }
 }
 
 async fn do_run(
     tx: &broadcast::Sender<Line>,
+    control_rx: &mut mpsc::Receiver<ControlMessage>,
     auth: &azure_speech::Auth,
 ) -> Result<RunState> {
     let azure_config = azure_speech::recognizer::Config::default();
@@ -91,6 +113,20 @@ async fn do_run(
                     }
                     _ => {}
                 }
+            }
+            msg = control_rx.recv() => {
+                let msg = msg.unwrap();
+                match msg {
+                    ControlMessage::SetState(new_state) => {
+                        if new_state != RunState::Running {
+                            return Ok(new_state);
+                        }
+                    }
+                    ControlMessage::GetState(reply) => {
+                        let _ = reply.send(RunState::Stopped);
+                    }
+                }
+
             }
         }
     }

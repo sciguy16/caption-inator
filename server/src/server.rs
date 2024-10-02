@@ -1,4 +1,4 @@
-use crate::{Line, Result, RunState};
+use crate::{ControlMessage, Line, Result, RunState};
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
@@ -8,22 +8,24 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use std::{path::PathBuf, sync::Arc, time::Duration};
-use tokio::sync::{broadcast, Mutex};
+use std::{path::PathBuf, time::Duration};
+use tokio::sync::{broadcast, mpsc, oneshot};
 use tower_http::services::ServeDir;
 use tracing::info;
 
 const LISTEN_ADDRESS: &str = "[::1]:3000";
 const PING_INTERVAL: Duration = Duration::from_secs(5);
+const GET_STATUS_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Clone)]
 struct AppState {
     tx: broadcast::Sender<Line>,
-    run_state: Arc<Mutex<RunState>>,
+    control_tx: mpsc::Sender<ControlMessage>,
 }
 
 pub async fn run(
     tx: broadcast::Sender<Line>,
+    control_tx: mpsc::Sender<ControlMessage>,
     frontend: Option<PathBuf>,
 ) -> Result<()> {
     let mut app = Router::new()
@@ -33,10 +35,7 @@ pub async fn run(
         .route("/api/azure/stop", post(stop))
         .route("/api/azure/simulate", post(simulate))
         .route("/api/azure/status", get(status))
-        .with_state(AppState {
-            tx,
-            run_state: Arc::new(Mutex::new(RunState::Stopped)),
-        });
+        .with_state(AppState { tx, control_tx });
 
     if let Some(frontend) = frontend {
         let serve_dir = ServeDir::new(frontend);
@@ -86,28 +85,40 @@ async fn handle_websocket(
     Ok(())
 }
 
-async fn start(State(AppState { run_state, .. }): State<AppState>) {
+async fn start(State(AppState { control_tx, .. }): State<AppState>) {
     info!("Start");
-    let mut state = run_state.lock().await;
-    *state = RunState::Running;
+    control_tx
+        .send(ControlMessage::SetState(RunState::Running))
+        .await
+        .unwrap();
 }
 
-async fn stop(State(AppState { run_state, .. }): State<AppState>) {
+async fn stop(State(AppState { control_tx, .. }): State<AppState>) {
     info!("Stop");
-    let mut state = run_state.lock().await;
-    *state = RunState::Stopped;
+    control_tx
+        .send(ControlMessage::SetState(RunState::Stopped))
+        .await
+        .unwrap();
 }
 
-async fn simulate(State(AppState { run_state, .. }): State<AppState>) {
+async fn simulate(State(AppState { control_tx, .. }): State<AppState>) {
     info!("Simulation");
-    let mut state = run_state.lock().await;
-    *state = RunState::Test;
+    control_tx
+        .send(ControlMessage::SetState(RunState::Test))
+        .await
+        .unwrap();
 }
 
 async fn status(
-    State(AppState { run_state, .. }): State<AppState>,
+    State(AppState { control_tx, .. }): State<AppState>,
 ) -> Json<RunState> {
     info!("Status");
-    let state = run_state.lock().await;
-    Json(*state)
+    let (tx, rx) = oneshot::channel();
+    control_tx.send(ControlMessage::GetState(tx)).await.unwrap();
+    Json(
+        tokio::time::timeout(GET_STATUS_TIMEOUT, rx)
+            .await
+            .unwrap()
+            .unwrap(),
+    )
 }

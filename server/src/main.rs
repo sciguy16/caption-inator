@@ -2,7 +2,7 @@ use clap::Parser;
 use color_eyre::{eyre::eyre, Result};
 use serde::Serialize;
 use std::{path::PathBuf, str::FromStr};
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc, oneshot};
 
 #[macro_use]
 extern crate tracing;
@@ -25,6 +25,11 @@ enum RunState {
     Stopped,
     Running,
     Test,
+}
+
+enum ControlMessage {
+    SetState(RunState),
+    GetState(oneshot::Sender<RunState>),
 }
 
 impl FromStr for Line {
@@ -60,6 +65,7 @@ async fn main() -> Result<()> {
     let args = Args::parse();
 
     let (tx, _rx) = broadcast::channel(10);
+    let (control_tx, control_rx) = mpsc::channel(5);
 
     if let Some(file) = args.replay {
         info!("Starting in replay mode from `{}`", file.display());
@@ -70,10 +76,10 @@ async fn main() -> Result<()> {
             (Some(region), Some(key)) => listener::Auth { region, key },
             _ => Err(eyre!("Region and key are required for Azure listener"))?,
         };
-        listener::start(tx.clone(), auth);
+        listener::start(tx.clone(), control_rx, auth);
     }
 
-    server::run(tx, args.frontend).await?;
+    server::run(tx, control_tx, args.frontend).await?;
 
     Ok(())
 }
