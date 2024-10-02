@@ -6,18 +6,28 @@ use axum::{
     },
     response::Response,
     routing::{get, post},
-    Router,
+    Json, Router,
 };
-use std::{path::PathBuf, time::Duration};
-use tokio::sync::broadcast;
+use serde::Serialize;
+use std::{path::PathBuf, sync::Arc, time::Duration};
+use tokio::sync::{broadcast, Mutex};
 use tower_http::services::ServeDir;
+use tracing::info;
 
 const LISTEN_ADDRESS: &str = "[::1]:3000";
 const PING_INTERVAL: Duration = Duration::from_secs(5);
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize)]
+enum RunState {
+    Stopped,
+    Running,
+    Test,
+}
+
 #[derive(Clone)]
 struct AppState {
     tx: broadcast::Sender<Line>,
+    run_state: Arc<Mutex<RunState>>,
 }
 
 pub async fn run(
@@ -30,7 +40,11 @@ pub async fn run(
         .route("/api/azure/start", post(start))
         .route("/api/azure/stop", post(stop))
         .route("/api/azure/simulate", post(simulate))
-        .with_state(AppState { tx });
+        .route("/api/azure/status", get(status))
+        .with_state(AppState {
+            tx,
+            run_state: Arc::new(Mutex::new(RunState::Stopped)),
+        });
 
     if let Some(frontend) = frontend {
         let serve_dir = ServeDir::new(frontend);
@@ -44,7 +58,7 @@ pub async fn run(
 }
 
 async fn ws_subscribe(
-    State(AppState { tx }): State<AppState>,
+    State(AppState { tx, .. }): State<AppState>,
     ws: WebSocketUpgrade,
 ) -> Response {
     debug!("New websocket connection");
@@ -80,8 +94,28 @@ async fn handle_websocket(
     Ok(())
 }
 
-async fn start() {}
+async fn start(State(AppState { run_state, .. }): State<AppState>) {
+    info!("Start");
+    let mut state = run_state.lock().await;
+    *state = RunState::Running;
+}
 
-async fn stop() {}
+async fn stop(State(AppState { run_state, .. }): State<AppState>) {
+    info!("Stop");
+    let mut state = run_state.lock().await;
+    *state = RunState::Stopped;
+}
 
-async fn simulate() {}
+async fn simulate(State(AppState { run_state, .. }): State<AppState>) {
+    info!("Simulation");
+    let mut state = run_state.lock().await;
+    *state = RunState::Test;
+}
+
+async fn status(
+    State(AppState { run_state, .. }): State<AppState>,
+) -> Json<RunState> {
+    info!("Status");
+    let state = run_state.lock().await;
+    Json(*state)
+}

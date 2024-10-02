@@ -64,8 +64,11 @@ enum Line {
 
 #[function_component]
 fn App() -> Html {
+    // let api = api::Api::new();
     html! {
-        <Captions />
+        // <ContextProvider<api::Api>>
+            <Captions />
+        // </ContextProvider<api::Api>>
     }
 }
 
@@ -95,7 +98,7 @@ fn Captions() -> Html {
                 let mut new = (*buffer).clone();
 
                 while let Some(Ok(msg)) = ws.next().await {
-                    gloo::console::log!(format!("message: {msg:?}"));
+                    // gloo::console::log!(format!("message: {msg:?}"));
                     if let Message::Text(msg) = msg {
                         match serde_json::from_str(&msg) {
                             Ok(msg) => {
