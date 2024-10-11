@@ -10,7 +10,7 @@ use tokio_stream::{
     {Stream, StreamExt},
 };
 
-const TEST_LINES: &str = include_str!("../../test-data/output.txt");
+const TEST_LINES: &str = include_str!("test-data.txt");
 
 pub struct Auth {
     pub region: String,

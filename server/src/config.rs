@@ -1,12 +1,16 @@
 use color_eyre::Result;
 use serde::Deserialize;
-use std::path::{Path, PathBuf};
+use std::{
+    net::SocketAddr,
+    path::{Path, PathBuf},
+};
 
 #[derive(Deserialize)]
 pub struct Config {
     pub frontend: Option<PathBuf>,
     pub region: Option<String>,
     pub key: Option<String>,
+    pub listen_address: SocketAddr,
 }
 
 impl Config {

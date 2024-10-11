@@ -69,7 +69,7 @@ async fn main() -> Result<()> {
     };
     listener::start(tx.clone(), control_rx, auth);
 
-    server::run(tx, control_tx, config.frontend).await?;
+    server::run(tx, control_tx, config.frontend, config.listen_address).await?;
 
     Ok(())
 }

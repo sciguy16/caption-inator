@@ -8,12 +8,11 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use std::{path::PathBuf, time::Duration};
+use std::{net::SocketAddr, path::PathBuf, time::Duration};
 use tokio::sync::{broadcast, mpsc, oneshot};
 use tower_http::services::ServeDir;
 use tracing::info;
 
-const LISTEN_ADDRESS: &str = "[::1]:3000";
 const PING_INTERVAL: Duration = Duration::from_secs(5);
 const GET_STATUS_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -27,6 +26,7 @@ pub async fn run(
     tx: broadcast::Sender<Line>,
     control_tx: mpsc::Sender<ControlMessage>,
     frontend: Option<PathBuf>,
+    listen_address: SocketAddr,
 ) -> Result<()> {
     let mut app = Router::new()
         .route("/api/", get(|| async { "Hello, World!" }))
@@ -42,8 +42,8 @@ pub async fn run(
         app = app.fallback_service(serve_dir);
     }
 
-    info!("Server listening on http://{LISTEN_ADDRESS}");
-    let listener = tokio::net::TcpListener::bind(LISTEN_ADDRESS).await?;
+    info!("Server listening on http://{listen_address}");
+    let listener = tokio::net::TcpListener::bind(listen_address).await?;
     axum::serve(listener, app).await?;
     Ok(())
 }
