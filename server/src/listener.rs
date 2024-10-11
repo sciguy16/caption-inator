@@ -1,6 +1,6 @@
 use crate::{ControlMessage, Line, Result, RunState};
 use color_eyre::eyre::eyre;
-use std::process::Stdio;
+use std::{process::Stdio, str::FromStr, time::Duration};
 use tokio::{
     io::{AsyncReadExt, BufReader},
     sync::{broadcast, mpsc},
@@ -9,6 +9,8 @@ use tokio_stream::{
     wrappers::ReceiverStream,
     {Stream, StreamExt},
 };
+
+const TEST_LINES: &str = include_str!("../../test-data/output.txt");
 
 pub struct Auth {
     pub region: String,
@@ -53,7 +55,7 @@ async fn start_inner(
                     }
                 }
             }
-            s => s,
+            RunState::Test => run_test(&tx, &mut control_rx).await,
         };
     }
 }
@@ -123,7 +125,7 @@ async fn do_run(
                         }
                     }
                     ControlMessage::GetState(reply) => {
-                        let _ = reply.send(RunState::Stopped);
+                        let _ = reply.send(RunState::Running);
                     }
                 }
 
@@ -170,4 +172,44 @@ async fn listen_from_default_input() -> Result<impl Stream<Item = Vec<u8>>> {
     });
 
     Ok(ReceiverStream::new(rx))
+}
+
+async fn run_test(
+    tx: &broadcast::Sender<Line>,
+    control_rx: &mut mpsc::Receiver<ControlMessage>,
+) -> RunState {
+    const LINE_DELAY: Duration = Duration::from_millis(300);
+
+    let mut interval = tokio::time::interval(LINE_DELAY);
+    let lines = TEST_LINES
+        .lines()
+        .filter(|line| !line.is_empty())
+        .map(Line::from_str)
+        .collect::<Result<Vec<_>>>()
+        .unwrap();
+    let mut lines_iter = lines.iter().cycle();
+
+    loop {
+        tokio::select! {
+            _ = interval.tick() => {
+                tx.send(lines_iter.next().unwrap().clone()).unwrap();
+
+
+            }
+            msg = control_rx.recv() => {
+                let msg = msg.unwrap();
+                match msg {
+                    ControlMessage::SetState(new_state) => {
+                        if new_state != RunState::Test {
+                            return new_state;
+                        }
+                    }
+                    ControlMessage::GetState(reply) => {
+                        let _ = reply.send(RunState::Test);
+                    }
+                }
+
+            }
+        }
+    }
 }

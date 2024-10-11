@@ -8,7 +8,7 @@ use tokio::sync::{broadcast, mpsc, oneshot};
 extern crate tracing;
 
 mod listener;
-mod replay;
+// mod replay;
 mod server;
 
 const PREFIX_RECOGNISING: &str = "RECOGNIZING: ";
@@ -47,8 +47,6 @@ impl FromStr for Line {
 
 #[derive(Parser)]
 struct Args {
-    #[clap(long, help = "Replay a text file over the websocket")]
-    replay: Option<PathBuf>,
     #[clap(long, help = "Directory to serve frontend assets out of")]
     frontend: Option<PathBuf>,
     #[clap(long, help = "Azure speech services region")]
@@ -67,17 +65,12 @@ async fn main() -> Result<()> {
     let (tx, _rx) = broadcast::channel(10);
     let (control_tx, control_rx) = mpsc::channel(5);
 
-    if let Some(file) = args.replay {
-        info!("Starting in replay mode from `{}`", file.display());
-        replay::run(tx.clone(), &file)?;
-    } else {
-        info!("Starting in listener mode");
-        let auth = match (args.region, args.key) {
-            (Some(region), Some(key)) => listener::Auth { region, key },
-            _ => Err(eyre!("Region and key are required for Azure listener"))?,
-        };
-        listener::start(tx.clone(), control_rx, auth);
-    }
+    info!("Starting captioninator");
+    let auth = match (args.region, args.key) {
+        (Some(region), Some(key)) => listener::Auth { region, key },
+        _ => Err(eyre!("Region and key are required for Azure listener"))?,
+    };
+    listener::start(tx.clone(), control_rx, auth);
 
     server::run(tx, control_tx, args.frontend).await?;
 
