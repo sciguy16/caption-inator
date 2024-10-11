@@ -2,7 +2,7 @@
 Description = Caption service
 
 [Service]
-ExecStart = /usr/bin/caption-server
+ExecStart = /usr/bin/caption-server --config /etc/caption.toml
 
 [Install]
 WantedBy = multi-user.target

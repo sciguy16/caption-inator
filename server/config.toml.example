@@ -1,0 +1,6 @@
+# Azure speech services region
+region = "uksouth"
+# Azure speech services key
+key = ""
+# Directory to serve frontend assets out of
+frontend = "/var/www/captions"

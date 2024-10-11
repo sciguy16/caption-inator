@@ -5,3 +5,4 @@ region
 log-*.log
 output.*.tsv
 /wordlists
+server/config.toml

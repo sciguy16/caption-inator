@@ -7,8 +7,8 @@ use tokio::sync::{broadcast, mpsc, oneshot};
 #[macro_use]
 extern crate tracing;
 
+mod config;
 mod listener;
-// mod replay;
 mod server;
 
 const PREFIX_RECOGNISING: &str = "RECOGNIZING: ";
@@ -47,12 +47,8 @@ impl FromStr for Line {
 
 #[derive(Parser)]
 struct Args {
-    #[clap(long, help = "Directory to serve frontend assets out of")]
-    frontend: Option<PathBuf>,
-    #[clap(long, help = "Azure speech services region")]
-    region: Option<String>,
-    #[clap(long, help = "Azure speech services key")]
-    key: Option<String>,
+    #[clap(long, help = "Path to config file")]
+    config: PathBuf,
 }
 
 #[tokio::main]
@@ -61,18 +57,19 @@ async fn main() -> Result<()> {
     init_tracing();
 
     let args = Args::parse();
+    let config = config::Config::load(&args.config)?;
 
     let (tx, _rx) = broadcast::channel(10);
     let (control_tx, control_rx) = mpsc::channel(5);
 
     info!("Starting captioninator");
-    let auth = match (args.region, args.key) {
+    let auth = match (config.region, config.key) {
         (Some(region), Some(key)) => listener::Auth { region, key },
         _ => Err(eyre!("Region and key are required for Azure listener"))?,
     };
     listener::start(tx.clone(), control_rx, auth);
 
-    server::run(tx, control_tx, args.frontend).await?;
+    server::run(tx, control_tx, config.frontend).await?;
 
     Ok(())
 }
