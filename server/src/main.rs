@@ -13,6 +13,8 @@ mod server;
 
 const PREFIX_RECOGNISING: &str = "RECOGNIZING: ";
 const PREFIX_RECOGNISED: &str = "RECOGNIZED: ";
+// https://learn.microsoft.com/en-us/azure/ai-services/speech-service/language-support?tabs=stt
+const LANGUAGE_OPTIONS: &[&str] = &["en-GB", "en-IE", "en-US", "ja-JP"];
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 enum Line {
@@ -27,9 +29,12 @@ enum RunState {
     Test,
 }
 
+#[derive(Debug)]
 enum ControlMessage {
     SetState(RunState),
     GetState(oneshot::Sender<RunState>),
+    SetLanguage(String),
+    GetLanguage(oneshot::Sender<Language>),
 }
 
 impl FromStr for Line {
@@ -43,6 +48,12 @@ impl FromStr for Line {
             Err(eyre!("Invalid input"))
         }
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+struct Language {
+    options: Vec<String>,
+    current: String,
 }
 
 #[derive(Parser)]

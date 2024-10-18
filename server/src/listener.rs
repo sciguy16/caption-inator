@@ -1,4 +1,4 @@
-use crate::{ControlMessage, Line, Result, RunState};
+use crate::{ControlMessage, Language, Line, Result, RunState};
 use color_eyre::eyre::eyre;
 use std::{process::Stdio, str::FromStr, time::Duration};
 use tokio::{
@@ -15,6 +15,20 @@ const TEST_LINES: &str = include_str!("test-data.txt");
 pub struct Auth {
     pub region: String,
     pub key: String,
+}
+
+struct SetupState {
+    language: String,
+    wordlist: Option<String>,
+}
+
+impl Default for SetupState {
+    fn default() -> Self {
+        Self {
+            language: crate::LANGUAGE_OPTIONS[0].into(),
+            wordlist: None,
+        }
+    }
 }
 
 // spx recognize --microphone --phrases @/tmp/words.txt --language en-GB
@@ -39,15 +53,25 @@ async fn start_inner(
     auth: Auth,
 ) -> Result<()> {
     let mut run_state = RunState::Stopped;
+    let mut setup_state = SetupState::default();
 
     let azure_auth =
         azure_speech::Auth::from_subscription(auth.region, auth.key);
 
     loop {
         run_state = match run_state {
-            RunState::Stopped => wait_for_transition(&mut control_rx).await,
+            RunState::Stopped => {
+                wait_for_transition(&mut control_rx, &mut setup_state).await
+            }
             RunState::Running => {
-                match do_run(&tx, &mut control_rx, &azure_auth).await {
+                match do_run(
+                    &tx,
+                    &mut control_rx,
+                    &mut setup_state,
+                    &azure_auth,
+                )
+                .await
+                {
                     Ok(state) => state,
                     Err(err) => {
                         error!("{err}");
@@ -55,13 +79,16 @@ async fn start_inner(
                     }
                 }
             }
-            RunState::Test => run_test(&tx, &mut control_rx).await,
+            RunState::Test => {
+                run_test(&tx, &mut control_rx, &mut setup_state).await
+            }
         };
     }
 }
 
 async fn wait_for_transition(
     control_rx: &mut mpsc::Receiver<ControlMessage>,
+    setup_state: &mut SetupState,
 ) -> RunState {
     loop {
         match control_rx.recv().await.unwrap() {
@@ -69,16 +96,29 @@ async fn wait_for_transition(
             ControlMessage::GetState(reply) => {
                 let _ = reply.send(RunState::Stopped);
             }
+            other => handle_lang_and_wordlist(other, setup_state),
         }
+    }
+}
+
+fn langauge_from_language(lang: &str) -> azure_speech::recognizer::Language {
+    match lang {
+        "en-GB" => azure_speech::recognizer::Language::EnGb,
+        "en-IE" => azure_speech::recognizer::Language::EnIe,
+        "en-US" => azure_speech::recognizer::Language::EnUs,
+        "ja-JP" => azure_speech::recognizer::Language::JaJp,
+        _ => azure_speech::recognizer::Language::EnGb,
     }
 }
 
 async fn do_run(
     tx: &broadcast::Sender<Line>,
     control_rx: &mut mpsc::Receiver<ControlMessage>,
+    setup_state: &mut SetupState,
     auth: &azure_speech::Auth,
 ) -> Result<RunState> {
-    let azure_config = azure_speech::recognizer::Config::default();
+    let azure_config = azure_speech::recognizer::Config::default()
+        .set_language(langauge_from_language(&setup_state.language));
     let client =
         azure_speech::recognizer::Client::connect(auth.clone(), azure_config)
             .await
@@ -121,12 +161,17 @@ async fn do_run(
                 match msg {
                     ControlMessage::SetState(new_state) => {
                         if new_state != RunState::Running {
+                            info!("Shutting down azure speech client");
+                            if let Err(err) = client.disconnect().await{
+                                error!("{err:?}");
+                            }
                             return Ok(new_state);
                         }
                     }
                     ControlMessage::GetState(reply) => {
                         let _ = reply.send(RunState::Running);
                     }
+            other => handle_lang_and_wordlist(other, setup_state),
                 }
 
             }
@@ -153,6 +198,7 @@ async fn listen_from_default_input() -> Result<impl Stream<Item = Vec<u8>>> {
             "webm",
             "/dev/stdout",
         ])
+        .stderr(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()?;
     let stdout = child.stdout.take().unwrap();
@@ -165,18 +211,26 @@ async fn listen_from_default_input() -> Result<impl Stream<Item = Vec<u8>>> {
         let mut reader = BufReader::new(stdout);
         let mut buf = [0; 1024];
         let mut errors = 0_usize;
-        while errors < 5 {
+        loop {
             match reader.read_exact(&mut buf).await {
                 Ok(_) => errors = 0,
                 Err(err) => {
                     warn!("{err}");
                     errors += 1;
+                    if errors > 5 {
+                        error!(
+                            "Max errors reached, unable to read ffmpeg stream"
+                        );
+                        break;
+                    }
                     continue;
                 }
             }
-            tx.send(buf.to_vec()).await.unwrap();
+            if tx.send(buf.to_vec()).await.is_err() {
+                info!("Stream closed");
+                break;
+            }
         }
-        error!("Max errors reached, unable to read ffmpeg stream");
     });
 
     Ok(ReceiverStream::new(rx))
@@ -185,6 +239,7 @@ async fn listen_from_default_input() -> Result<impl Stream<Item = Vec<u8>>> {
 async fn run_test(
     tx: &broadcast::Sender<Line>,
     control_rx: &mut mpsc::Receiver<ControlMessage>,
+    setup_state: &mut SetupState,
 ) -> RunState {
     const LINE_DELAY: Duration = Duration::from_millis(300);
 
@@ -215,9 +270,33 @@ async fn run_test(
                     ControlMessage::GetState(reply) => {
                         let _ = reply.send(RunState::Test);
                     }
+            other => handle_lang_and_wordlist(other, setup_state),
                 }
 
             }
         }
+    }
+}
+
+fn handle_lang_and_wordlist(msg: ControlMessage, setup_state: &mut SetupState) {
+    match msg {
+        ControlMessage::GetLanguage(reply) => {
+            let _ = reply.send(Language {
+                options: crate::LANGUAGE_OPTIONS
+                    .iter()
+                    .copied()
+                    .map(Into::into)
+                    .collect(),
+                current: setup_state.language.clone(),
+            });
+        }
+        ControlMessage::SetLanguage(choice) => {
+            if crate::LANGUAGE_OPTIONS.contains(&choice.as_str()) {
+                setup_state.language = choice;
+            } else {
+                warn!("Invalid language choice `{choice}`");
+            }
+        }
+        other => panic!("Unreachable: {other:?}"),
     }
 }

@@ -1,3 +1,5 @@
+RECOGNIZED: 私のウサギ
+
 RECOGNIZING: another
 RECOGNIZING: another day i
 RECOGNIZING: another day
@@ -17,6 +19,8 @@ RECOGNIZING: you can't do it again just so you know marlene
 RECOGNIZING: you can't do it again just so you know marlene's still
 RECOGNIZING: you can't do it again just so you know marlene's still asleep
 RECOGNIZED: You can't do it again. Just so you know. Marlene's still asleep.
+
+RECOGNIZED: ゲームを食べませんか？
 
 RECOGNIZING: let
 RECOGNIZING: let's get
@@ -132,6 +136,8 @@ RECOGNIZED: You just lost the game.
 
 RECOGNIZING: eeyore
 RECOGNIZED: Eeyore.
+
+RECOGNIZED: ええ？
 
 RECOGNIZING: pecky
 RECOGNIZED: OK.
@@ -281,6 +287,12 @@ RECOGNIZING: so what team are you
 RECOGNIZING: so what team are you in
 RECOGNIZING: so what team are you in sorry
 RECOGNIZED: So what team are you in? Sorry.
+
+RECOGNIZING: ペッキは
+RECOGNIZING: ペッキは君
+RECOGNIZING: ペッキは君の
+RECOGNIZING: ペッキは君の目を
+RECOGNIZED: ペッキは君の目を食べます。
 
 RECOGNIZING: thank you
 RECOGNIZING: thank you have

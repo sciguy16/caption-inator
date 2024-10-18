@@ -1,4 +1,4 @@
-use crate::{ControlMessage, Line, Result, RunState};
+use crate::{ControlMessage, Language, Line, Result, RunState};
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
@@ -36,6 +36,7 @@ pub async fn run(
         .route("/api/azure/simulate", post(simulate))
         .route("/api/azure/status", get(status))
         .route("/api/ip", get(ip))
+        .route("/api/lang", get(get_lang).post(post_lang))
         .with_state(AppState { tx, control_tx });
 
     if let Some(frontend) = frontend {
@@ -162,4 +163,34 @@ async fn ip() -> Json<String> {
     warn!("No interface found");
 
     Json("Failed to find interface".into())
+}
+
+async fn get_lang(
+    State(AppState { control_tx, .. }): State<AppState>,
+) -> Json<Language> {
+    info!("Get lang");
+    let (tx, rx) = oneshot::channel();
+    control_tx
+        .send(ControlMessage::GetLanguage(tx))
+        .await
+        .unwrap();
+    Json(
+        tokio::time::timeout(GET_STATUS_TIMEOUT, rx)
+            .await
+            .unwrap()
+            .unwrap(),
+    )
+}
+
+async fn post_lang(
+    app_state: State<AppState>,
+    Json(req): Json<String>,
+) -> Json<Language> {
+    info!("Set language: {req}");
+    app_state
+        .control_tx
+        .send(ControlMessage::SetLanguage(req))
+        .await
+        .unwrap();
+    get_lang(app_state).await
 }

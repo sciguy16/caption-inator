@@ -1,5 +1,7 @@
 use gloo::net::http::Request;
 use serde::Deserialize;
+use wasm_bindgen::JsCast;
+use web_sys::HtmlSelectElement;
 use yew::prelude::*;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Deserialize)]
@@ -9,6 +11,12 @@ enum RunState {
     Stopped,
     Running,
     Test,
+}
+
+#[derive(Debug, Default, PartialEq, Eq, Deserialize)]
+struct Language {
+    options: Vec<String>,
+    current: String,
 }
 
 #[function_component]
@@ -86,14 +94,76 @@ pub fn Controls() -> Html {
                 <button onclick={start}>{ "Start" }</button>
                 <button onclick={stop}>{ "Stop" }</button>
                 <button onclick={simulate}>{ "Test" }</button>
-                { " Language: " }
-                <select>
-                    <option>{ "English" }</option>
-                    <option>{ "English (IE)" }</option>
-                    <option>{ "English (US)" }</option>
-                    <option>{ "Japanese" }</option>
-                </select>
+
+                <LanguageSelection />
             </p>
         </form>
+    }
+}
+
+#[function_component]
+fn LanguageSelection() -> Html {
+    let language = use_state_eq(Language::default);
+
+    wasm_bindgen_futures::spawn_local({
+        let language = language.clone();
+        async move {
+            let new_language = Request::get("/api/lang")
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+            language.set(new_language);
+        }
+    });
+
+    let onchange = {
+        let language = language.clone();
+        move |new: Event| {
+            let target: HtmlSelectElement =
+                new.target().unwrap().dyn_into().unwrap();
+            let new_lang = target.value().to_string();
+            gloo::console::log!(&new_lang);
+
+            wasm_bindgen_futures::spawn_local({
+                let language = language.clone();
+                async move {
+                    let new_language = Request::post("/api/lang")
+                        .json(&new_lang)
+                        .unwrap()
+                        .send()
+                        .await
+                        .unwrap()
+                        .json()
+                        .await
+                        .unwrap();
+                    language.set(new_language);
+                }
+            });
+        }
+    };
+
+    let options = language
+        .options
+        .iter()
+        .map(|option| {
+            let selected = *option == language.current;
+            html! {
+                <option value={option.to_string()} {selected}>
+                    { option }
+                </option>
+            }
+        })
+        .collect::<Html>();
+
+    html! {
+        <>
+             { " Language: " }
+            <select {onchange}>
+                {options}
+            </select>
+        </>
     }
 }
