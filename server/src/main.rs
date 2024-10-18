@@ -35,6 +35,8 @@ enum ControlMessage {
     GetState(oneshot::Sender<RunState>),
     SetLanguage(String),
     GetLanguage(oneshot::Sender<Language>),
+    SetWordlist(Option<String>),
+    GetWordlist(oneshot::Sender<Wordlist>),
 }
 
 impl FromStr for Line {
@@ -56,6 +58,12 @@ struct Language {
     current: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+struct Wordlist {
+    options: Vec<String>,
+    current: Option<String>,
+}
+
 #[derive(Parser)]
 struct Args {
     #[clap(long, help = "Path to config file")]
@@ -74,11 +82,11 @@ async fn main() -> Result<()> {
     let (control_tx, control_rx) = mpsc::channel(5);
 
     info!("Starting captioninator");
-    let auth = match (config.region, config.key) {
+    let auth = match (config.region.clone(), config.key.clone()) {
         (Some(region), Some(key)) => listener::Auth { region, key },
         _ => Err(eyre!("Region and key are required for Azure listener"))?,
     };
-    listener::start(tx.clone(), control_rx, auth);
+    listener::start(tx.clone(), control_rx, auth, config.clone());
 
     server::run(tx, control_tx, config.frontend, config.listen_address).await?;
 

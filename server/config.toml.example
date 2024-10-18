@@ -5,3 +5,4 @@ key = ""
 # Directory to serve frontend assets out of
 frontend = "/var/www/captions"
 listen_address = "[::]:80"
+wordlist_dir = ""

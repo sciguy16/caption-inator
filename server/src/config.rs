@@ -5,12 +5,13 @@ use std::{
     path::{Path, PathBuf},
 };
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct Config {
     pub frontend: Option<PathBuf>,
     pub region: Option<String>,
     pub key: Option<String>,
     pub listen_address: SocketAddr,
+    pub wordlist_dir: Option<PathBuf>,
 }
 
 impl Config {

@@ -19,6 +19,12 @@ struct Language {
     current: String,
 }
 
+#[derive(Debug, Default, PartialEq, Eq, Deserialize)]
+struct Wordlist {
+    options: Vec<String>,
+    current: Option<String>,
+}
+
 #[function_component]
 pub fn Controls() -> Html {
     let run_state = use_state_eq(RunState::default);
@@ -96,6 +102,7 @@ pub fn Controls() -> Html {
                 <button onclick={simulate}>{ "Test" }</button>
 
                 <LanguageSelection />
+                <WordlistSelection />
             </p>
         </form>
     }
@@ -162,6 +169,81 @@ fn LanguageSelection() -> Html {
         <>
              { " Language: " }
             <select {onchange}>
+                {options}
+            </select>
+        </>
+    }
+}
+
+#[function_component]
+fn WordlistSelection() -> Html {
+    const SPECIAL_VALUE_FOR_NONE: &str = "special-value-for-none";
+
+    let wordlist = use_state_eq(Wordlist::default);
+
+    wasm_bindgen_futures::spawn_local({
+        let wordlist = wordlist.clone();
+        async move {
+            let new_wordlist = Request::get("/api/wordlist")
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+            wordlist.set(new_wordlist);
+        }
+    });
+
+    let onchange = {
+        let wordlist = wordlist.clone();
+        move |new: Event| {
+            let target: HtmlSelectElement =
+                new.target().unwrap().dyn_into().unwrap();
+            let new_wordlist = target.value().to_string();
+            let new_wordlist = (new_wordlist != SPECIAL_VALUE_FOR_NONE)
+                .then_some(new_wordlist);
+            gloo::console::log!(format!("{new_wordlist:?}"));
+
+            wasm_bindgen_futures::spawn_local({
+                let wordlist = wordlist.clone();
+                async move {
+                    let new_wordlist = Request::post("/api/wordlist")
+                        .json(&new_wordlist)
+                        .unwrap()
+                        .send()
+                        .await
+                        .unwrap()
+                        .json()
+                        .await
+                        .unwrap();
+                    wordlist.set(new_wordlist);
+                }
+            });
+        }
+    };
+
+    let options = wordlist
+        .options
+        .iter()
+        .map(|option| {
+            let selected = Some(option) == wordlist.current.as_ref();
+            html! {
+                <option value={option.to_string()} {selected}>
+                    { option }
+                </option>
+            }
+        })
+        .collect::<Html>();
+
+    html! {
+        <>
+             { " Wordlist: " }
+            <select {onchange}>
+                <option
+                    value={SPECIAL_VALUE_FOR_NONE}
+                    selected={ wordlist.current.is_none() }
+                >{"None"}</option>
                 {options}
             </select>
         </>

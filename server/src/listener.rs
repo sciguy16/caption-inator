@@ -1,6 +1,8 @@
-use crate::{ControlMessage, Language, Line, Result, RunState};
+use crate::{
+    config::Config, ControlMessage, Language, Line, Result, RunState, Wordlist,
+};
 use color_eyre::eyre::eyre;
-use std::{process::Stdio, str::FromStr, time::Duration};
+use std::{path::Path, process::Stdio, str::FromStr, time::Duration};
 use tokio::{
     io::{AsyncReadExt, BufReader},
     sync::{broadcast, mpsc},
@@ -37,9 +39,10 @@ pub fn start(
     tx: broadcast::Sender<Line>,
     control_rx: mpsc::Receiver<ControlMessage>,
     auth: Auth,
+    config: Config,
 ) {
     tokio::task::spawn(async move {
-        start_inner(tx, control_rx, auth).await.unwrap()
+        start_inner(tx, control_rx, auth, config).await.unwrap()
     });
 }
 
@@ -51,6 +54,7 @@ async fn start_inner(
     tx: broadcast::Sender<Line>,
     mut control_rx: mpsc::Receiver<ControlMessage>,
     auth: Auth,
+    config: Config,
 ) -> Result<()> {
     let mut run_state = RunState::Stopped;
     let mut setup_state = SetupState::default();
@@ -61,7 +65,8 @@ async fn start_inner(
     loop {
         run_state = match run_state {
             RunState::Stopped => {
-                wait_for_transition(&mut control_rx, &mut setup_state).await
+                wait_for_transition(&mut control_rx, &mut setup_state, &config)
+                    .await
             }
             RunState::Running => {
                 match do_run(
@@ -69,6 +74,7 @@ async fn start_inner(
                     &mut control_rx,
                     &mut setup_state,
                     &azure_auth,
+                    &config,
                 )
                 .await
                 {
@@ -80,7 +86,7 @@ async fn start_inner(
                 }
             }
             RunState::Test => {
-                run_test(&tx, &mut control_rx, &mut setup_state).await
+                run_test(&tx, &mut control_rx, &mut setup_state, &config).await
             }
         };
     }
@@ -89,6 +95,7 @@ async fn start_inner(
 async fn wait_for_transition(
     control_rx: &mut mpsc::Receiver<ControlMessage>,
     setup_state: &mut SetupState,
+    config: &Config,
 ) -> RunState {
     loop {
         match control_rx.recv().await.unwrap() {
@@ -96,7 +103,7 @@ async fn wait_for_transition(
             ControlMessage::GetState(reply) => {
                 let _ = reply.send(RunState::Stopped);
             }
-            other => handle_lang_and_wordlist(other, setup_state),
+            other => handle_lang_and_wordlist(other, setup_state, config),
         }
     }
 }
@@ -116,9 +123,24 @@ async fn do_run(
     control_rx: &mut mpsc::Receiver<ControlMessage>,
     setup_state: &mut SetupState,
     auth: &azure_speech::Auth,
+    config: &Config,
 ) -> Result<RunState> {
-    let azure_config = azure_speech::recognizer::Config::default()
+    let mut azure_config = azure_speech::recognizer::Config::default()
         .set_language(langauge_from_language(&setup_state.language));
+
+    if let (Some(wordlist_dir), Some(wordlist_file)) =
+        (&config.wordlist_dir, &setup_state.wordlist)
+    {
+        let wordlist_path = wordlist_dir.join(wordlist_file);
+        let wordlist = std::fs::read_to_string(wordlist_path)?;
+        let wordlist = wordlist
+            .lines()
+            .filter(|line| !line.is_empty())
+            .map(String::from)
+            .collect();
+        azure_config = azure_config.set_phrases(wordlist);
+    }
+
     let client =
         azure_speech::recognizer::Client::connect(auth.clone(), azure_config)
             .await
@@ -171,7 +193,7 @@ async fn do_run(
                     ControlMessage::GetState(reply) => {
                         let _ = reply.send(RunState::Running);
                     }
-            other => handle_lang_and_wordlist(other, setup_state),
+            other => handle_lang_and_wordlist(other, setup_state,config),
                 }
 
             }
@@ -240,6 +262,7 @@ async fn run_test(
     tx: &broadcast::Sender<Line>,
     control_rx: &mut mpsc::Receiver<ControlMessage>,
     setup_state: &mut SetupState,
+    config: &Config,
 ) -> RunState {
     const LINE_DELAY: Duration = Duration::from_millis(300);
 
@@ -270,7 +293,7 @@ async fn run_test(
                     ControlMessage::GetState(reply) => {
                         let _ = reply.send(RunState::Test);
                     }
-            other => handle_lang_and_wordlist(other, setup_state),
+            other => handle_lang_and_wordlist(other, setup_state,config),
                 }
 
             }
@@ -278,7 +301,11 @@ async fn run_test(
     }
 }
 
-fn handle_lang_and_wordlist(msg: ControlMessage, setup_state: &mut SetupState) {
+fn handle_lang_and_wordlist(
+    msg: ControlMessage,
+    setup_state: &mut SetupState,
+    config: &Config,
+) {
     match msg {
         ControlMessage::GetLanguage(reply) => {
             let _ = reply.send(Language {
@@ -297,6 +324,52 @@ fn handle_lang_and_wordlist(msg: ControlMessage, setup_state: &mut SetupState) {
                 warn!("Invalid language choice `{choice}`");
             }
         }
+        ControlMessage::GetWordlist(reply) => {
+            let options = config
+                .wordlist_dir
+                .as_deref()
+                .map(list_wordlists)
+                .unwrap_or_default();
+            let _ = reply.send(Wordlist {
+                options,
+                current: setup_state.wordlist.clone(),
+            });
+        }
+        ControlMessage::SetWordlist(choice) => {
+            let options = config
+                .wordlist_dir
+                .as_deref()
+                .map(list_wordlists)
+                .unwrap_or_default();
+            if let Some(choice) = choice {
+                if options.contains(&choice) {
+                    setup_state.wordlist = Some(choice);
+                } else {
+                    warn!("Invalid wordlist choice `{choice:?}`");
+                }
+            } else {
+                setup_state.wordlist = None;
+            }
+        }
         other => panic!("Unreachable: {other:?}"),
     }
+}
+
+fn list_wordlists(dir: &Path) -> Vec<String> {
+    let mut options = Vec::new();
+
+    for entry in dir.read_dir().unwrap() {
+        let Ok(entry) = entry else { continue };
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if file_type.is_file() {
+            let Ok(file_name) = entry.file_name().into_string() else {
+                continue;
+            };
+            options.push(file_name);
+        }
+    }
+
+    options
 }

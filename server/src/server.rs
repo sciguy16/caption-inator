@@ -1,4 +1,4 @@
-use crate::{ControlMessage, Language, Line, Result, RunState};
+use crate::{ControlMessage, Language, Line, Result, RunState, Wordlist};
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
@@ -37,6 +37,7 @@ pub async fn run(
         .route("/api/azure/status", get(status))
         .route("/api/ip", get(ip))
         .route("/api/lang", get(get_lang).post(post_lang))
+        .route("/api/wordlist", get(get_wordlist).post(post_wordlist))
         .with_state(AppState { tx, control_tx });
 
     if let Some(frontend) = frontend {
@@ -193,4 +194,34 @@ async fn post_lang(
         .await
         .unwrap();
     get_lang(app_state).await
+}
+
+async fn get_wordlist(
+    State(AppState { control_tx, .. }): State<AppState>,
+) -> Json<Wordlist> {
+    info!("Get wordlist");
+    let (tx, rx) = oneshot::channel();
+    control_tx
+        .send(ControlMessage::GetWordlist(tx))
+        .await
+        .unwrap();
+    Json(
+        tokio::time::timeout(GET_STATUS_TIMEOUT, rx)
+            .await
+            .unwrap()
+            .unwrap(),
+    )
+}
+
+async fn post_wordlist(
+    app_state: State<AppState>,
+    Json(req): Json<Option<String>>,
+) -> Json<Wordlist> {
+    info!("Set wordlist: {req:?}");
+    app_state
+        .control_tx
+        .send(ControlMessage::SetWordlist(req))
+        .await
+        .unwrap();
+    get_wordlist(app_state).await
 }
