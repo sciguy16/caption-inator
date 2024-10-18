@@ -14,6 +14,7 @@ enum RunState {
 #[function_component]
 pub fn Controls() -> Html {
     let run_state = use_state_eq(RunState::default);
+    let ip = use_state_eq(String::default);
 
     let onsubmit = |evt: SubmitEvent| {
         evt.prevent_default();
@@ -22,6 +23,8 @@ pub fn Controls() -> Html {
     // check the current run state
     wasm_bindgen_futures::spawn_local({
         let run_state = run_state.clone();
+        let ip = ip.clone();
+
         async move {
             let new_state = Request::get("/api/azure/status")
                 .send()
@@ -31,6 +34,15 @@ pub fn Controls() -> Html {
                 .await
                 .unwrap();
             run_state.set(new_state);
+
+            let new_ip = Request::get("/api/ip")
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+            ip.set(new_ip);
         }
     });
 
@@ -69,17 +81,19 @@ pub fn Controls() -> Html {
 
     html! {
         <form {onsubmit}>
-            <p>{ format!("Currently {:?}", *run_state) }</p>
-            <button onclick={start}>{ "Start" }</button>
-            <button onclick={stop}>{ "Stop" }</button>
-            <button onclick={simulate}>{ "Test" }</button>
-            { " Language: " }
-            <select>
-                <option>{ "English" }</option>
-                <option>{ "English (IE)" }</option>
-                <option>{ "English (US)" }</option>
-                <option>{ "Japanese" }</option>
-            </select>
+            { format!("Captions {:?}; IP: {}", *run_state, *ip) }
+            <p>
+                <button onclick={start}>{ "Start" }</button>
+                <button onclick={stop}>{ "Stop" }</button>
+                <button onclick={simulate}>{ "Test" }</button>
+                { " Language: " }
+                <select>
+                    <option>{ "English" }</option>
+                    <option>{ "English (IE)" }</option>
+                    <option>{ "English (US)" }</option>
+                    <option>{ "Japanese" }</option>
+                </select>
+            </p>
         </form>
     }
 }

@@ -35,6 +35,7 @@ pub async fn run(
         .route("/api/azure/stop", post(stop))
         .route("/api/azure/simulate", post(simulate))
         .route("/api/azure/status", get(status))
+        .route("/api/ip", get(ip))
         .with_state(AppState { tx, control_tx });
 
     if let Some(frontend) = frontend {
@@ -121,4 +122,44 @@ async fn status(
             .unwrap()
             .unwrap(),
     )
+}
+
+async fn ip() -> Json<String> {
+    use std::process::Stdio;
+    info!("IP");
+
+    let routes = std::process::Command::new("ip")
+        .arg("route")
+        .stdout(Stdio::piped())
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8_lossy(&routes.stdout);
+    for line in stdout.lines() {
+        if line.starts_with("default") {
+            let mut iterator = line.split_whitespace();
+            while let Some(element) = iterator.next() {
+                if element == "dev" {
+                    let default_if = iterator.next().unwrap();
+                    info!(?default_if);
+
+                    let addresses = std::process::Command::new("ip")
+                        .args(["addr", "show", "dev", default_if])
+                        .stdout(Stdio::piped())
+                        .output()
+                        .unwrap();
+                    let addresses = String::from_utf8_lossy(&addresses.stdout);
+                    let addresses = addresses
+                        .lines()
+                        .filter(|line| line.contains("global"))
+                        .filter_map(|line| line.split_whitespace().nth(1))
+                        .collect::<Vec<_>>();
+                    return Json(addresses.join(", "));
+                }
+            }
+        }
+    }
+    warn!("No interface found");
+
+    Json("Failed to find interface".into())
 }

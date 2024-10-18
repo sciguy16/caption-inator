@@ -64,11 +64,8 @@ enum Line {
 
 #[function_component]
 fn App() -> Html {
-    // let api = api::Api::new();
     html! {
-        // <ContextProvider<api::Api>>
             <Captions />
-        // </ContextProvider<api::Api>>
     }
 }
 
