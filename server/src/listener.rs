@@ -154,7 +154,6 @@ async fn listen_from_default_input() -> Result<impl Stream<Item = Vec<u8>>> {
             "/dev/stdout",
         ])
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
         .spawn()?;
     let stdout = child.stdout.take().unwrap();
 
@@ -165,10 +164,19 @@ async fn listen_from_default_input() -> Result<impl Stream<Item = Vec<u8>>> {
     tokio::task::spawn(async move {
         let mut reader = BufReader::new(stdout);
         let mut buf = [0; 1024];
-        loop {
-            reader.read_exact(&mut buf).await.unwrap();
+        let mut errors = 0_usize;
+        while errors < 5 {
+            match reader.read_exact(&mut buf).await {
+                Ok(_) => errors = 0,
+                Err(err) => {
+                    warn!("{err}");
+                    errors += 1;
+                    continue;
+                }
+            }
             tx.send(buf.to_vec()).await.unwrap();
         }
+        error!("Max errors reached, unable to read ffmpeg stream");
     });
 
     Ok(ReceiverStream::new(rx))

@@ -5,6 +5,8 @@ Description = Caption service
 ExecStart = /usr/bin/caption-server --config /etc/caption.toml
 AmbientCapabilities = CAP_NET_BIND_SERVICE
 CapabilityBoundingSet = CAP_NET_BIND_SERVICE
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+User=david
 
 [Install]
 WantedBy = multi-user.target
