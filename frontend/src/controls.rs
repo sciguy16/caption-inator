@@ -94,16 +94,14 @@ pub fn Controls() -> Html {
     };
 
     html! {
-        <form {onsubmit}>
-            { format!("Captions {:?}; IP: {}", *run_state, *ip) }
-            <p>
-                <button onclick={start}>{ "Start" }</button>
-                <button onclick={stop}>{ "Stop" }</button>
-                <button onclick={simulate}>{ "Test" }</button>
+        <form {onsubmit} class="controls">
+            { format!("Captions: {:?}; IP: {}; ", *run_state, *ip) }
+            <button onclick={start}>{ "Start" }</button>
+            <button onclick={stop}>{ "Stop" }</button>
+            <button onclick={simulate}>{ "Test" }</button>
 
-                <LanguageSelection />
-                <WordlistSelection />
-            </p>
+            <LanguageSelection />
+            <WordlistSelection />
         </form>
     }
 }

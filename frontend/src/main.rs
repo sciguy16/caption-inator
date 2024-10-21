@@ -130,7 +130,7 @@ fn Captions() -> Html {
         <>
             <p>
                 <span class="state">
-                    { format!("State: {:?}", *connection_state) }
+                    { format!("State: {:?}; ", *connection_state) }
                 </span>
                 <controls::Controls />
             </p>
