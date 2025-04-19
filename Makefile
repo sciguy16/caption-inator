@@ -1,7 +1,8 @@
 .PHONY: pi deploy-pi clean deb
 
 PI_DEB := target/pi-release.deb
-PI_IP := 2a02:8012:1000:10:cf15:7c8:46b3:f88b
+# PI_IP := 2a02:8012:1000:10:cf15:7c8:46b3:f88b
+PI_IP := 192.168.8.169
 
 pi: $(PI_DEB) server frontend
 

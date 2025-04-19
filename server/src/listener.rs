@@ -151,8 +151,10 @@ async fn do_run(
     let mut events = client
         .recognize(
             stream,
-            azure_speech::recognizer::ContentType::Webm,
-            azure_speech::recognizer::Details::stream("mac", "stream"),
+            azure_speech::recognizer::AudioFormat::WebmOpus,
+            azure_speech::recognizer::AudioDevice::new(
+                azure_speech::recognizer::SourceType::Microphones,
+            ),
         )
         .await
         .map_err(|err| eyre!("{err:?}"))?;

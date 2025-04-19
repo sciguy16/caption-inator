@@ -11,8 +11,9 @@ panic = "abort"
 panic = "abort"
 
 [dependencies]
-axum = { version = "0.7.5", features = ["ws"] }
-azure-speech = "0.2.3"
+axum = { version = "0.8.3", features = ["ws"] }
+azure-speech = "0.8.0"
+bytes = "1.10.1"
 clap = { version = "4.5.17", features = ["derive"] }
 color-eyre = "0.6.3"
 native-tls = { version = "0.2.12", features = ["vendored"] }
@@ -22,7 +23,7 @@ serde_json = "1.0.128"
 tokio = { version = "1.36.0", features = ["full"] }
 tokio-stream = "0.1.16"
 toml = "0.8.19"
-tower-http = { version = "0.5.2", features = ["fs"] }
+tower-http = { version = "0.6.2", features = ["fs"] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 

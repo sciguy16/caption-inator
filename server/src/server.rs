@@ -8,6 +8,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use bytes::Bytes;
 use std::{net::SocketAddr, path::PathBuf, time::Duration};
 use tokio::sync::{broadcast, mpsc, oneshot};
 use tower_http::services::ServeDir;
@@ -69,17 +70,18 @@ async fn handle_websocket(
     mut rx: broadcast::Receiver<Line>,
 ) -> Result<()> {
     let mut ping_interval = tokio::time::interval(PING_INTERVAL);
+    let ping_payload = Bytes::from(vec![0]);
 
     loop {
         tokio::select! {
             _ = ping_interval.tick() => {
-                socket.send(Message::Ping(vec![0])).await?;
+                socket.send(Message::Ping(ping_payload.clone())).await?;
             }
             Some(Ok(msg)) = socket.recv() => {
                 if let Message::Close(_) = msg { break }
             }
             line = rx.recv() => {
-                socket.send(Message::Text(serde_json::to_string(&line?)?))
+                socket.send(Message::Text(serde_json::to_string(&line?)?.into()))
                     .await?;
             }
         }
