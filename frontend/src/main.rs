@@ -74,6 +74,7 @@ fn Captions() -> Html {
     let window = web_sys::window().unwrap_throw();
     let connection_state = use_state_eq(ConnectionState::default);
     let buffer = use_state(CaptionBuffer::default);
+    let font_size = use_state(|| 100_i32);
 
     window.scroll_by_with_x_and_y(0.0, 2000.0);
 
@@ -132,9 +133,12 @@ fn Captions() -> Html {
                 <span class="state">
                     { format!("State: {:?}; ", *connection_state) }
                 </span>
-                <controls::Controls />
+                <controls::Controls font_size={font_size.clone()} />
             </p>
-            <div class="container">
+            <div
+                class="container"
+                style={format!("font-size: {}px", *font_size)}
+            >
                 { sentences }
                 { active }
             </div>

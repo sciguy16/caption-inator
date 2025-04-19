@@ -1,7 +1,7 @@
 use gloo::net::http::Request;
 use serde::Deserialize;
 use wasm_bindgen::JsCast;
-use web_sys::HtmlSelectElement;
+use web_sys::{HtmlInputElement, HtmlSelectElement};
 use yew::prelude::*;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Deserialize)]
@@ -25,8 +25,13 @@ struct Wordlist {
     current: Option<String>,
 }
 
+#[derive(PartialEq, Properties)]
+pub struct ControlsProps {
+    pub font_size: UseStateHandle<i32>,
+}
+
 #[function_component]
-pub fn Controls() -> Html {
+pub fn Controls(props: &ControlsProps) -> Html {
     let run_state = use_state_eq(RunState::default);
     let ip = use_state_eq(String::default);
 
@@ -102,6 +107,7 @@ pub fn Controls() -> Html {
 
             <LanguageSelection />
             <WordlistSelection />
+            <FontSizeSelection font_size={props.font_size.clone()} />
         </form>
     }
 }
@@ -244,6 +250,32 @@ fn WordlistSelection() -> Html {
                 >{"None"}</option>
                 {options}
             </select>
+        </>
+    }
+}
+
+#[function_component]
+pub fn FontSizeSelection(props: &ControlsProps) -> Html {
+    let font_size = props.font_size.clone();
+
+    let onchange = move |new: Event| {
+        let target: HtmlInputElement =
+            new.target().unwrap().dyn_into().unwrap();
+        let new = target.value().to_string().parse().unwrap();
+        font_size.set(new);
+    };
+
+    html! {
+        <>
+            { "Font size: " }
+            <input
+                type="range"
+                min="50"
+                max="250"
+                value={props.font_size.to_string()}
+                {onchange}
+            />
+            { *props.font_size }
         </>
     }
 }
