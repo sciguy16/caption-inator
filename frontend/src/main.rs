@@ -128,7 +128,7 @@ fn Captions() -> Html {
 
     html! {
         <>
-            <p>
+            <p id="header">
                 <span class="state">
                     { format!("State: {:?}; ", *connection_state) }
                 </span>
